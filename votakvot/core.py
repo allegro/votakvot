@@ -36,7 +36,6 @@ class Context(typing.Protocol):
     def attach(self, name: str, mode: str, **kwargs) -> fsspec.core.OpenFile: ...
     def inform(self, **kwargs) -> None: ...
     def call(self, tid: str, func: Callable[..., T], params: Dict) -> T: ...
-    def call_multi(self, func: Callable[..., T], tid_to_params: Dict[str, Dict]) -> Dict[str, T]: ...
     def meter(self, series: Optional[str], metrics: Dict, format: str) -> None: ...
     def flush(self) -> None: ...
     def snapshot(self) -> None: ...
@@ -45,7 +44,7 @@ class Context(typing.Protocol):
 tracker_var = contextvars.ContextVar("votakvot.core.tracker_var")
 
 def current_context() -> Context:
-    return tracker_var.get() or NoneContext()
+    return tracker_var.get(None) or NoneContext()
 
 
 @contextlib.contextmanager
@@ -85,11 +84,6 @@ class NoneContext(Context):
         logger.info("call %s: %s -> %s", func, tid, params)
         func = _desuspect_func(func)
         return func(**params)
-
-    def call_multi(self, func, tid_to_params):
-        logger.info("call_multi %s: %s", func, tid_to_params)
-        func = _desuspect_func(func)
-        return {tid: func(**p) for tid, p in tid_to_params.items()}
 
     def snapshot(self):
         logger.debug("snapshot - do nothing")
@@ -150,7 +144,7 @@ class TrackingContext(BaseTrackingContext):
     def dump_trial(self):
         self.hook.trial_presave(self)
         with self.attach("votakvot.yaml", mode='wt') as f:
-            data.dump_yaml_file(f, self.data)
+            votakvot.data.dump_yaml_file(f, self.data)
 
     def snapshot(self):
         if self.iter is None:
@@ -346,7 +340,7 @@ class Trial:
     @cached_property
     def data(self):
         with self.attach("votakvot.yaml") as f:
-            return data.load_yaml_file(f)
+            return votakvot.data.load_yaml_file(f)
 
     @property
     def tid(self):

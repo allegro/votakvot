@@ -1,5 +1,7 @@
 import random
 import tempfile
+import contextvars
+import concurrent.futures
 
 import votakvot
 
@@ -21,19 +23,26 @@ def main():
     store_path = tempfile.mkdtemp()
     print("write results into", store_path)
 
-    votakvot.init(
-        runner='process',
-        path=store_path,
+    votakvot.init(path=store_path)
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+    context = contextvars.copy_context()
+
+    pits = executor.map(
+        lambda params: {
+            **params,
+            'pi': context.copy().run(calc_pi, **params),
+        },
+        [
+            {'n': n, 'seed': s}
+            for n in [2 ** i for i in range(5, 20)]
+            for s in range(30)
+        ],
     )
-
-    pits = calc_pi.multi([
-        {'n': n, 'seed': s}
-        for n in [2 ** i for i in range(5, 20)]
-        for s in range(30)
-    ])
     for t in pits:
-        print("pi>", dict(t.params), t.result)
+        print("pi>", t)
 
+    print(">>", votakvot.load_report())
     print("done")
 
 

@@ -69,10 +69,6 @@ def call(tid: str, func: Callable[..., _T], params: Dict) -> _T:
     return core.current_context().call(tid, func, params)
 
 
-def call_multi(func: Callable[..., _T], tid_to_params: Dict[str, Dict]) -> Dict[str, _T]:
-    return core.current_context().call_multi(func, tid_to_params)
-
-
 def attach(name, mode='w', **kwargs) -> io.FileIO:
     return core.current_context().attach(name, mode=mode, **kwargs)
 
@@ -116,15 +112,11 @@ def track(
 
         sig = inspect.signature(f)
 
-        def multi(params_list):
-            tid_to_params = {name_prefix + tidp(**p) + suffixc(): p for p in params_list}
-            return core.current_context().call_multi(captured_f, tid_to_params)
-
         @functools.wraps(f)
         def g(*args, **kwargs):
             params = dict(sig.bind(*args, **kwargs).arguments)
             tid = name_prefix + tidp(**params) + suffixc()
-            return core.current_context().call(tid, captured_f, params).result
+            return core.current_context().call(tid, captured_f, params)
 
         if dill:
             # `dill` is able to serialize mutated global function,
@@ -135,7 +127,6 @@ def track(
             # so `g` needs to capture link to itself
             captured_f = g
 
-        g.multi = multi
         g._votakvot_origin = f
 
         return g
