@@ -42,10 +42,10 @@ class RunnerContext(core.Context):
 
 class Runner:
 
-    def __init__(self, path, metap=None, hooks=None) -> None:
+    def __init__(self, path, metap=None, hook=None) -> None:
         self.path = path
         self.metap = metap
-        self.hooks = hooks or []
+        self.hook = hook
 
     def call(self, tid, func, params):
         context = self._build_context(tid, func, params)
@@ -84,7 +84,7 @@ class Runner:
             params=params,
             meta=m,
             tid=tid,
-            hooks=self.hooks,
+            hook=self.hook,
         )
 
     def _make_call(self, ac: core.TrackingContext):

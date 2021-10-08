@@ -1,6 +1,5 @@
 """Votakvot -- simple tool for tracking information during code testing and researching."""
 
-import atexit
 import contextlib
 import datetime
 import logging
@@ -19,7 +18,9 @@ import pandas as pd
 
 from . import data, metrics
 from .data import FancyDict, dump_yaml_file, path_fs
+
 import votakvot
+import votakvot.hook
 
 
 logger = logging.getLogger(__name__)
@@ -40,26 +41,7 @@ class Context(typing.Protocol):
     def snapshot(self) -> None: ...
 
 
-class TrackingHook(typing.Protocol):
-
-    def trial_started(self, context: 'TrackingContext'):
-        pass
-
-    def trial_presave(self, context: 'TrackingContext'):
-        pass
-
-    def trial_finished(self, context: 'TrackingContext'):
-        pass
-
-    def context_init(self, context: 'TrackingContext'):
-        pass
-
-    def context_infused(self, context: 'InfusedTrackingContext'):
-        pass
-
-
 tracker_var = contextvars.ContextVar("votakvot.core.tracker_var")
-
 
 def current_context() -> Context:
     return tracker_var.get() or NoneContext()
@@ -118,12 +100,12 @@ class NoneContext(Context):
 
 class BaseTrackingContext(NoneContext):
 
-    def __init__(self, path, uid, tid, metrics, hooks):
+    def __init__(self, path, uid, tid, metrics, hook=None):
         self.path = path
         self.uid = uid
         self.tid = tid
         self.metrics = metrics
-        self.hooks = hooks or []
+        self.hook = votakvot.hook.coerce_to_hook(hook)
 
     def attach(self, name, mode='w', autocommit='onclose', **kwargs):
         fn = f"{self.path}/{name}"
@@ -142,13 +124,13 @@ class BaseTrackingContext(NoneContext):
 
 class TrackingContext(BaseTrackingContext):
 
-    def __init__(self, path, meta, func, params, tid, hooks):
+    def __init__(self, path, meta, func, params, tid, hook):
         BaseTrackingContext.__init__(
             self,
             path=path,
             tid=tid,
             uid=uuid.uuid1().hex,
-            hooks=hooks,
+            hook=hook,
             metrics=metrics.MetricsExporter(),
         )
         self.func = func
@@ -165,8 +147,7 @@ class TrackingContext(BaseTrackingContext):
         self.info.update(kwargs)
 
     def dump_trial(self):
-        for h in self.hooks:
-            h.trial_presave(self)
+        self.hook.trial_presave(self)
         with self.attach("votakvot.yaml", mode='wt') as f:
             data.dump_yaml_file(f, self.data)
 
@@ -199,7 +180,7 @@ class TrackingContext(BaseTrackingContext):
 
         other = dict(other.__dict__)
         other.pop('path', None)
-        other.pop('hooks', None)
+        other.pop('hook', None)
         self.__dict__.update(other)
 
         return True
@@ -224,9 +205,7 @@ class TrackingContext(BaseTrackingContext):
             'state': 'wait',
         })
 
-        for h in self.hooks:
-            h.context_init(self)
-
+        self.hook.context_init(self)
         self.dump_trial()
 
     def _runfunc(self):
@@ -257,9 +236,7 @@ class TrackingContext(BaseTrackingContext):
         self.dump_trial()
 
         with with_context(self):
-
-            for h in self.hooks:
-                h.trial_started(self)
+            self.hook.trial_started(self)
 
             try:
                 started = datetime.datetime.now()
@@ -277,9 +254,7 @@ class TrackingContext(BaseTrackingContext):
                 if 'error' in self.data:
                     del self.data['error']
 
-            for h in self.hooks:
-                h.trial_finished(self)
-
+            self.hook.trial_finished(self)
             self.metrics.flush()
 
         self.data.at.finished = datetime.datetime.now()
@@ -292,7 +267,7 @@ class TrackingContext(BaseTrackingContext):
             path=self.path,
             uid=self.uid,
             tid=self.tid,
-            hooks=self.hooks,
+            hook=self.hook,
         )
 
     def flush(self):
@@ -303,14 +278,14 @@ class TrackingContext(BaseTrackingContext):
 
 class InfusedTrackingContext(BaseTrackingContext):
 
-    def __init__(self, uid, path, tid, hooks):
+    def __init__(self, uid, path, tid, hook):
         uid = uuid.uuid1().hex
         BaseTrackingContext.__init__(
             self,
             path=path,
             uid=uid,
             tid=tid,
-            hooks=hooks,
+            hook=hook,
             metrics=metrics.MetricsExporter(add_uuid=uid),
         )
         self.info = FancyDict()
@@ -329,8 +304,7 @@ class InfusedTrackingContext(BaseTrackingContext):
 
     def infuse_context(self):
         logger.info("activate infused context for %s", self.path)
-        for h in self.hooks:
-            h.context_infused(self)
+        self.hook.context_infused(self)
 
     def flush(self):
         logger.info("flush infused context %s", self)

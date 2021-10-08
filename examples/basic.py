@@ -15,7 +15,7 @@ def calc_pi(n):
 
 def main():
     votakvot.init(
-        store_path=tempfile.mkdtemp(),  # "." by default
+        path=tempfile.mkdtemp(),  # "." by default
     )
 
     for x in range(2, 7):

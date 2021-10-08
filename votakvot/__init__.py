@@ -48,9 +48,8 @@ def init(
 ):
     runner_cls = rr.runners[runner]
     metap = meta_providers or meta.providers
-    r: rr.Runner = runner_cls(metap=metap, path=path, hooks=hooks, **kwargs)
+    r: rr.Runner = runner_cls(metap=metap, path=path, hook=hooks, **kwargs)
     atexit.register(r.close)
-    hooks = hooks or []
     core.set_global_context(rr.RunnerContext(r))
 
 
