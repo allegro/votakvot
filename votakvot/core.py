@@ -16,11 +16,12 @@ from typing import Callable, Dict, Iterable, List, Optional
 import fsspec
 import pandas as pd
 
-from . import data, metrics
-from .data import FancyDict, dump_yaml_file, path_fs
-
 import votakvot
+import votakvot.data
+import votakvot.metrics
 import votakvot.hook
+
+from votakvot.data import FancyDict, dump_yaml_file, path_fs
 
 
 logger = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ class BaseTrackingContext(NoneContext):
             # f = path_fs(fn).open(fn, mode=mode, autocommit=False, **kwargs)
             f = path_fs(fn).open(fn, mode=mode, autocommit=True, **kwargs)
             logger.debug("wrap file object for an autocommit")
-            return data.AutoCommitableFileWrapper(f)
+            return votakvot.data.AutoCommitableFileWrapper(f)
         else:
             return path_fs(fn).open(fn, mode=mode, autocommit=autocommit, **kwargs)
 
@@ -131,7 +132,7 @@ class TrackingContext(BaseTrackingContext):
             tid=tid,
             uid=uuid.uuid1().hex,
             hook=hook,
-            metrics=metrics.MetricsExporter(),
+            metrics=votakvot.metrics.MetricsExporter(),
         )
         self.func = func
         self.params = params
@@ -286,7 +287,7 @@ class InfusedTrackingContext(BaseTrackingContext):
             uid=uid,
             tid=tid,
             hook=hook,
-            metrics=metrics.MetricsExporter(add_uuid=uid),
+            metrics=votakvot.metrics.MetricsExporter(add_uuid=uid),
         )
         self.info = FancyDict()
         self.info_path = f"votakvot-{uid}.yaml"
@@ -382,11 +383,11 @@ class Trial:
         return self.data.get('result')
 
     def load_metrics(self) -> pd.DataFrame:
-        return metrics.load_metrics(self)
+        return votakvot.metrics.load_metrics(self)
 
     @cached_property
     def data_plain(self):
-        r = data.plainify_dict(self.data)
+        r = votakvot.data.plainify_dict(self.data)
         r.pop('votakvot', None)
         return r
 
