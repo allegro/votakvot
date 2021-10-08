@@ -73,9 +73,6 @@ class MetricsExporter:
         for s in self.metricss:
             self.flush_series(s)
 
-    def close(self):
-        self.flush()
-
 
 def load_metrics(trial: Union['votakvot.core.Trial', str, Path]) -> pd.DataFrame:
 

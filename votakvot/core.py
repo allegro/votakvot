@@ -9,6 +9,7 @@ import pickle
 import traceback
 import typing
 import uuid
+import contextvars
 
 from functools import cached_property
 from typing import Callable, Dict, Iterable, List, Optional
@@ -57,47 +58,30 @@ class TrackingHook(typing.Protocol):
         pass
 
 
-_context = None
+tracker_var = contextvars.ContextVar("votakvot.core.tracker_var")
 
 
 def current_context() -> Context:
-    return _context or NoneContext()
+    return tracker_var.get() or NoneContext()
 
 
 @contextlib.contextmanager
 def with_context(context: Context):
-    global _context
-    old = _context
     try:
         logger.debug("enter context %s", context)
-        _context = context
+        t = tracker_var.set(context)
         yield
     finally:
         logger.debug("exit context %s", context)
-        _context = old
+        context.flush()
+        tracker_var.reset(t)
 
 
-@atexit.register
-def _close_global_context():
-    logger.info("maybe close global context")
-    if _context:
-        _context.close()
-
-
-def set_global_context(context: Context, force=False):
-
-    global _context
-    assert force or _context is None, "Context is already configured"
-
-    old_context = _context
-    if hasattr(old_context, '_on_unset_global_context'):
-        old_context._on_unset_global_context()
-
-    logger.info("Set global context to %s", context)
-    _context = context
-
-    if hasattr(context, '_on_set_global_context'):
-        context._on_set_global_context()
+def set_global_context(context: Context):
+    assert tracker_var.get(None) is None, "Context is already configured"
+    tracker_var.set(context)
+    if isinstance(context, InfusedTrackingContext):
+        context.infuse_context()
 
 
 class NoneContext(Context):
@@ -296,7 +280,7 @@ class TrackingContext(BaseTrackingContext):
             for h in self.hooks:
                 h.trial_finished(self)
 
-            self.metrics.close()
+            self.metrics.flush()
 
         self.data.at.finished = datetime.datetime.now()
         self.data.at.duration = (finished - started).microseconds * 0.000001
@@ -343,7 +327,7 @@ class InfusedTrackingContext(BaseTrackingContext):
                 'info': self.info,
             })
 
-    def _on_set_global_context(self):
+    def infuse_context(self):
         logger.info("activate infused context for %s", self.path)
         for h in self.hooks:
             h.context_infused(self)
@@ -351,10 +335,6 @@ class InfusedTrackingContext(BaseTrackingContext):
     def flush(self):
         logger.info("flush infused context %s", self)
         self.metrics.flush()
-
-    def close(self):
-        logger.info("close infused context %s", self)
-        self.metrics.close()
 
 
 def _desuspect_func(f):
