@@ -1,4 +1,5 @@
 """Votakvot -- simple tool for tracking information during code testing and researching."""
+from __future__ import annotations
 
 import contextlib
 import datetime
@@ -30,43 +31,58 @@ logger = logging.getLogger(__name__)
 T = typing.TypeVar('T')
 
 
-class Context(typing.Protocol):
-    uid: Optional[str]
-    tid: Optional[str]
-    def attach(self, name: str, mode: str, **kwargs) -> fsspec.core.OpenFile: ...
-    def inform(self, **kwargs) -> None: ...
-    def call(self, tid: str, func: Callable[..., T], params: Dict) -> T: ...
-    def meter(self, series: Optional[str], metrics: Dict, format: str) -> None: ...
-    def flush(self) -> None: ...
-    def snapshot(self) -> None: ...
+class ATracker(typing.Protocol):
+
+    uid: str | None
+    tid: str | None
+
+    def attach(self, name: str, mode: str, **kwargs) -> fsspec.core.OpenFile:
+        ...
+
+    def inform(self, **kwargs) -> None:
+        ...
+
+    def call(self, tid: str, func: Callable[..., T], params: Dict) -> T:
+        ...
+
+    def meter(self, series: str | None, metrics: Dict, format: str | None) -> None:
+        ...
+
+    def flush(self) -> None:
+        ...
+
+    def snapshot(self) -> None:
+        ...
 
 
 tracker_var = contextvars.ContextVar("votakvot.core.tracker_var")
 
-def current_context() -> Context:
-    return tracker_var.get(None) or NoneContext()
+def current_tracker() -> ATracker:
+    return tracker_var.get(None) or NopeTracker()
 
 
 @contextlib.contextmanager
-def with_context(context: Context):
+def with_tracker(tracker: ATracker):
     try:
-        logger.debug("enter context %s", context)
-        t = tracker_var.set(context)
+        logger.debug("enter tracker %s", tracker)
+        t = tracker_var.set(tracker)
+        if isinstance(tracker, InfusedTracker):
+            tracker.activate()
         yield
     finally:
-        logger.debug("exit context %s", context)
-        context.flush()
+        logger.debug("exit tracker %s", tracker)
+        tracker.flush()
         tracker_var.reset(t)
 
 
-def set_global_context(context: Context):
-    assert tracker_var.get(None) is None, "Context is already configured"
-    tracker_var.set(context)
-    if isinstance(context, InfusedTrackingContext):
-        context.infuse_context()
+def set_global_tracker(tracker: ATracker):
+    assert tracker_var.get(None) is None, "ATracker is already configured"
+    tracker_var.set(tracker)
+    if isinstance(tracker, InfusedTracker):
+        tracker.activate()
 
 
-class NoneContext(Context):
+class NopeTracker(ATracker):
 
     uid = None
     tid = None
@@ -93,7 +109,7 @@ class NoneContext(Context):
             logger.debug("metric[%s] %s = %s", series, k, v)
 
 
-class BaseTrackingContext(NoneContext):
+class BaseTracker(NopeTracker):
 
     def __init__(self, path, uid, tid, metrics, hook=None):
         self.path = path
@@ -117,10 +133,10 @@ class BaseTrackingContext(NoneContext):
         self.metrics.meter(series, metrics, format)
 
 
-class TrackingContext(BaseTrackingContext):
+class Tracker(BaseTracker):
 
     def __init__(self, path, meta, func, params, tid, hook):
-        BaseTrackingContext.__init__(
+        BaseTracker.__init__(
             self,
             path=path,
             tid=tid,
@@ -230,7 +246,7 @@ class TrackingContext(BaseTrackingContext):
         self.data.info = self.info
         self.dump_trial()
 
-        with with_context(self):
+        with with_tracker(self):
             self.hook.trial_started(self)
 
             try:
@@ -257,10 +273,9 @@ class TrackingContext(BaseTrackingContext):
 
         self.dump_trial()
 
-    def infused_context(self) -> 'InfusedTrackingContext':
-        return InfusedTrackingContext(
+    def infused_tracker(self) -> 'InfusedTracker':
+        return InfusedTracker(
             path=self.path,
-            uid=self.uid,
             tid=self.tid,
             hook=self.hook,
         )
@@ -271,11 +286,11 @@ class TrackingContext(BaseTrackingContext):
         self.metrics.flush()
 
 
-class InfusedTrackingContext(BaseTrackingContext):
+class InfusedTracker(BaseTracker):
 
-    def __init__(self, uid, path, tid, hook):
+    def __init__(self, path, tid, hook):
         uid = uuid.uuid1().hex
-        BaseTrackingContext.__init__(
+        BaseTracker.__init__(
             self,
             path=path,
             uid=uid,
@@ -297,12 +312,12 @@ class InfusedTrackingContext(BaseTrackingContext):
                 'info': self.info,
             })
 
-    def infuse_context(self):
-        logger.info("activate infused context for %s", self.path)
+    def activate(self):
+        logger.info("activate infused tracker for %s", self.path)
         self.hook.context_infused(self)
 
     def flush(self):
-        logger.info("flush infused context %s", self)
+        logger.info("flush infused tracker %s", self)
         self.metrics.flush()
 
 

@@ -8,7 +8,7 @@ from . import meta, core
 logger = logging.getLogger(__name__)
 
 
-class RunnerContext(core.Context):
+class RunnerContext(core.ATracker):
 
     tid = None
     uid = None
@@ -58,7 +58,7 @@ class Runner:
 
     def _build_context(self, tid, func, params):
         m = meta.capture_meta(self.metap) if self.metap else {}
-        return core.TrackingContext(
+        return core.Tracker(
             path=f"{self.path}/{tid}",
             func=func,
             params=params,
@@ -67,7 +67,7 @@ class Runner:
             hook=self.hook,
         )
 
-    def _make_call(self, ac: core.TrackingContext):
+    def _make_call(self, ac: core.Tracker):
         ac.run()
 
     def close(self):
@@ -85,7 +85,7 @@ class ProcessRunner(Runner):
         self.mp_context = multiprocess.get_context(mp_method)
         self.mp_pool = self.mp_context.Pool(processes=processes)
 
-    def _make_call(self, ac: core.TrackingContext):
+    def _make_call(self, ac: core.Tracker):
         callref = self.mp_pool.apply_async(ac.run)
         callref.wait()
         callref.get()

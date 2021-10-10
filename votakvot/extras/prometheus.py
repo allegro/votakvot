@@ -6,7 +6,7 @@ from typing import Iterable, Optional
 
 import prometheus_client as pc
 
-from votakvot import core
+from votakvot import core, hook
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class _SchedulerThread(threading.Thread):
             self.sched.run()
 
 
-class PrometheusBaseBridgeHook(core.TrackingHook):
+class PrometheusBaseBridgeHook(hook.Hook):
 
     _sched_thread = _SchedulerThread()
 
@@ -78,7 +78,7 @@ class PrometheusBaseBridgeHook(core.TrackingHook):
 
     def do_export(
         self,
-        context: 'core.Context',
+        context: 'core.Tracker',
     ):
         raise NotImplementedError
 

@@ -26,7 +26,7 @@ class VotakvotBeamPlugin(BeamPlugin):
     """
     This class exists only to trigger to load this module
     spawn daemon thread which waits when PipelineOptions become
-    available, then tries to load & install infused context
+    available, then tries to load & install infused tracker
     """
 
 
@@ -75,13 +75,13 @@ def _maybe_load_context(opts):
 
     path = opts.get('votakvot_trial_path', "")
     if path:
-        context_file = f"{path}/infused_beam_context.pickle"
-        logger.info("load infused context from %s", context_file)
-        with path_fs(context_file).open(context_file, mode='rb') as f:
-            context = dill.load(f)
-        core.set_global_context(context)
+        tracker_file = f"{path}/beam_infused_tracker.pickle"
+        logger.info("load infused tracker from %s", tracker_file)
+        with path_fs(tracker_file).open(tracker_file, mode='rb') as f:
+            tracker = dill.load(f)
+        core.set_global_tracker(tracker)
     else:
-        logger.info("no infused context is provided")
+        logger.info("no infused tracker is provided")
 
 
 def _wait_and_load_pipeline_options_run():

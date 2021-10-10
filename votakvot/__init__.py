@@ -50,31 +50,31 @@ def init(
     metap = meta_providers or meta.providers
     r: rr.Runner = runner_cls(metap=metap, path=path, hook=hooks, **kwargs)
     atexit.register(r.close)
-    core.set_global_context(rr.RunnerContext(r))
+    core.set_global_tracker(rr.RunnerContext(r))
 
 
 def meter(series="", value=None, *, format='csv', **kwargs):
     assert 'tid' not in kwargs and 'at' not in kwargs
     if value is not None:
         kwargs['value'] = value
-    core.current_context().meter(series, kwargs, format=format)
+    core.current_tracker().meter(series, kwargs, format=format)
 
 
 def inform(**kwargs):
     assert 'tid' not in kwargs
-    core.current_context().inform(**kwargs)
+    core.current_tracker().inform(**kwargs)
 
 
 def call(tid: str, func: Callable[..., _T], params: Dict) -> _T:
-    return core.current_context().call(tid, func, params)
+    return core.current_tracker().call(tid, func, params)
 
 
 def attach(name, mode='w', **kwargs) -> io.FileIO:
-    return core.current_context().attach(name, mode=mode, **kwargs)
+    return core.current_tracker().attach(name, mode=mode, **kwargs)
 
 
 def tid() -> Optional[str]:
-    return core.current_context().tid
+    return core.current_tracker().tid
 
 
 def _default_tid(**kwargs):
@@ -116,7 +116,7 @@ def track(
         def g(*args, **kwargs):
             params = dict(sig.bind(*args, **kwargs).arguments)
             tid = name_prefix + tidp(**params) + suffixc()
-            return core.current_context().call(tid, captured_f, params)
+            return core.current_tracker().call(tid, captured_f, params)
 
         if dill:
             # `dill` is able to serialize mutated global function,

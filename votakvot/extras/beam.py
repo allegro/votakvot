@@ -31,7 +31,7 @@ def inject_trial_into_pipeline(
     pipeline: Optional[apache_beam.Pipeline] = None,
     *,
     options: Optional[apache_beam.options.pipeline_options.PipelineOptions] = None,
-    context: Optional[core.TrackingContext] = None,
+    tracker: Optional[core.Tracker] = None,
 ):
     if options and pipeline is None:
         pass
@@ -42,32 +42,32 @@ def inject_trial_into_pipeline(
     else:
         raise ValueError("Parameters `options` and `pipeline` are mutually exclusives")
 
-    context = context or core.current_context()
-    assert isinstance(context, core.TrackingContext)
-    inf_context = context.infused_context()
+    tracker = tracker or core.current_tracker()
+    assert isinstance(tracker, core.Tracker)
+    infused_tracker = tracker.infused_tracker()
 
-    fname = "infused_beam_context.pickle"
-    fp = f"{context.path}/{fname}"
+    fname = "beam_infused_tracker.pickle"
+    fp = f"{tracker.path}/{fname}"
 
-    if getattr(context, '_beam__tracked', False):
+    if getattr(tracker, '_beam__tracked', False):
         logger.warning("Context is already attached to the pipeilne")
         return
-    context._beam__tracked = True
+    tracker._beam__tracked = True
 
     logger.info("Enable VotakvotBeamPlugin, snapshot path is %s", fp)
-    options.view_as(VotakvotOptions).votakvot_trial_path = context.path
+    options.view_as(VotakvotOptions).votakvot_trial_path = tracker.path
     so = options.view_as(apache_beam.options.pipeline_options.SetupOptions)
     so.beam_plugins = so.beam_plugins or []
     so.beam_plugins.append('votakvot.extras.beam_plugin.VotakvotBeamPlugin')
 
-    logger.debug("Put pipeline options to context.meta")
+    logger.debug("Put pipeline options to tracker.meta")
     opts_as_dict = options.get_all_options()
-    context.meta.setdefault('beam', FancyDict())
-    context.meta['beam']['pipeline_options'] = opts_as_dict
-    context.flush()
+    tracker.meta.setdefault('beam', FancyDict())
+    tracker.meta['beam']['pipeline_options'] = opts_as_dict
+    tracker.flush()
 
     with path_fs(fp).open(fp, 'wb') as f:
-        dill.dump(inf_context, f)
+        dill.dump(infused_tracker, f)
 
 
 def _get_active_pipeline_options():

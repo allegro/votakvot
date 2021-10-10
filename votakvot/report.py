@@ -2,7 +2,7 @@ import logging
 
 import pandas as pd
 
-from .core import current_context, Trial
+from .core import current_tracker, Trial
 from .data import path_fs, maybe_plainify
 
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_trials(path=None, safe=True):
-    path = path or getattr(current_context(), 'path', None) or "."
+    path = path or getattr(current_tracker(), 'path', None) or "."
     fs = path_fs(path)
     clue_files = fs.glob(f"{path}/**/votakvot.yaml")
 
@@ -28,7 +28,7 @@ def load_trials(path=None, safe=True):
 
 
 def _load_report(path, rowfn, safe):
-    path = path or getattr(current_context(), 'path', None) or "."
+    path = path or getattr(current_tracker(), 'path', None) or "."
     trials = load_trials(path)
 
     def yield_rows():
