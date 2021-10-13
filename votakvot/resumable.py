@@ -4,7 +4,7 @@ import time
 
 from typing import Any, Optional, Union
 
-from .core import current_tracker
+import votakvot
 
 
 class resumable_fn(abc.ABC):
@@ -65,7 +65,7 @@ class resumable_fn(abc.ABC):
             raise StopIteration
 
     def snapshot(self):
-        current_tracker().snapshot()
+        votakvot.current_tracker().snapshot()
         self._lsat = time.time()
 
     @abc.abstractmethod

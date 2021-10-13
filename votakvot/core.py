@@ -1,7 +1,6 @@
 """Votakvot -- simple tool for tracking information during code testing and researching."""
 from __future__ import annotations
 
-import contextlib
 import datetime
 import logging
 import os
@@ -9,10 +8,9 @@ import pickle
 import traceback
 import typing
 import uuid
-import contextvars
 
 from functools import cached_property
-from typing import Callable, Dict, Iterable, List, Optional
+from typing import Dict, Iterable, Iterator, List, Optional
 
 import fsspec
 import pandas as pd
@@ -34,6 +32,7 @@ T = typing.TypeVar('T')
 class ATracker(typing.Protocol):
 
     uid: str | None
+
     tid: str | None
 
     def attach(self, name: str, mode: str, **kwargs) -> fsspec.core.OpenFile:
@@ -42,44 +41,14 @@ class ATracker(typing.Protocol):
     def inform(self, **kwargs) -> None:
         ...
 
-    def call(self, tid: str, func: Callable[..., T], params: Dict) -> T:
-        ...
-
     def meter(self, series: str | None, metrics: Dict, format: str | None) -> None:
         ...
 
     def flush(self) -> None:
         ...
 
-    def snapshot(self) -> None:
+    def activate(self) -> None:
         ...
-
-
-tracker_var = contextvars.ContextVar("votakvot.core.tracker_var")
-
-def current_tracker() -> ATracker:
-    return tracker_var.get(None) or NopeTracker()
-
-
-@contextlib.contextmanager
-def with_tracker(tracker: ATracker):
-    try:
-        logger.debug("enter tracker %s", tracker)
-        t = tracker_var.set(tracker)
-        if isinstance(tracker, InfusedTracker):
-            tracker.activate()
-        yield
-    finally:
-        logger.debug("exit tracker %s", tracker)
-        tracker.flush()
-        tracker_var.reset(t)
-
-
-def set_global_tracker(tracker: ATracker):
-    assert tracker_var.get(None) is None, "ATracker is already configured"
-    tracker_var.set(tracker)
-    if isinstance(tracker, InfusedTracker):
-        tracker.activate()
 
 
 class NopeTracker(ATracker):
@@ -88,28 +57,29 @@ class NopeTracker(ATracker):
     tid = None
 
     def attach(self, name, mode='w', **kwargs):
-        logger.info("attach: %s", name)
+        logger.warning("skip attach: %s", name)
         if 'r' in mode:
             raise FileNotFoundError(f"attachement {name} is not available")
-        return path_fs("file").open(os.devnull, **kwargs)
+        return path_fs("file").open(os.devnull, mode=mode, **kwargs)
 
     def inform(self, **kwargs):
         logger.info("info: %s", kwargs)
-
-    def call(self, tid, func, params):
-        logger.info("call %s: %s -> %s", func, tid, params)
-        func = _desuspect_func(func)
-        return func(**params)
-
-    def snapshot(self):
-        logger.debug("snapshot - do nothing")
 
     def meter(self, series: Optional[str], metrics: Dict, format: str):
         for k, v in metrics.items():
             logger.debug("metric[%s] %s = %s", series, k, v)
 
+    def flush():
+        pass
 
-class BaseTracker(NopeTracker):
+    def activate(self):
+        pass
+
+
+_nope_tracker = NopeTracker()
+
+
+class _BaseTracker(ATracker):
 
     def __init__(self, path, uid, tid, metrics, hook=None):
         self.path = path
@@ -132,11 +102,14 @@ class BaseTracker(NopeTracker):
     def meter(self, series: Optional[str], metrics: Dict, format=None):
         self.metrics.meter(series, metrics, format)
 
+    def activate(self):
+        pass
 
-class Tracker(BaseTracker):
 
-    def __init__(self, path, meta, func, params, tid, hook):
-        BaseTracker.__init__(
+class Tracker(_BaseTracker):
+
+    def __init__(self, path, meta, tid, hook=None):
+        _BaseTracker.__init__(
             self,
             path=path,
             tid=tid,
@@ -144,11 +117,11 @@ class Tracker(BaseTracker):
             hook=hook,
             metrics=votakvot.metrics.MetricsExporter(),
         )
-        self.func = func
-        self.params = params
         self.info = {}
         self.data = FancyDict()
         self.meta = meta
+
+        # support snapshottable fns
         self.iter = None
 
     def inform(self, **kwargs):
@@ -157,11 +130,6 @@ class Tracker(BaseTracker):
                 logger.warning("overwrite informed field %r: %r -> %r", k, self.info[k], kwargs[k])
         self.info.update(kwargs)
 
-    def dump_trial(self):
-        self.hook.trial_presave(self)
-        with self.attach("votakvot.yaml", mode='wt') as f:
-            votakvot.data.dump_yaml_file(f, self.data)
-
     def snapshot(self):
         if self.iter is None:
             raise RuntimeError("function `snapshot` can be used only from tracked iterator")
@@ -169,13 +137,13 @@ class Tracker(BaseTracker):
 
     def dump_snapshot(self):
         self.flush()
-        logger.debug("dump snapshot for %s", self.func)
+        logger.debug("dump snapshot")
         with self.attach("snapshot.pickle", 'wb') as f:
             pickle.dump(self, f)
 
     def load_snapshot(self):
         try:
-            logger.debug("loading snapshot for %s", self.func)
+            logger.debug("loading snapshot for")
             with self.attach("snapshot.pickle", 'rb') as f:
                 other = pickle.load(f)
         except FileNotFoundError:
@@ -184,7 +152,7 @@ class Tracker(BaseTracker):
         except Exception:
             logger.exception("failed to load snapshot")
             return False
-        logger.debug("resume %s from snapshot", self.func)
+        logger.debug("resume from snapshot")
 
         if self.params != other.params:
             raise RuntimeError("snapshot has mismatched params", self.params, other.params)
@@ -196,10 +164,7 @@ class Tracker(BaseTracker):
 
         return True
 
-    def prerun(self):
-        if self.load_snapshot():
-            return
-
+    def start(self, params: Dict):
         self.data = FancyDict({
             'votakvot': votakvot.__version__,
             'tid': self.tid,
@@ -210,68 +175,75 @@ class Tracker(BaseTracker):
             ),
             'params': FancyDict(
                 (k, v)
-                for k, v in self.params.items()
+                for k, v in params.items()
                 if not k.startswith("_")
             ),
-            'state': 'wait',
+            'state': 'started',
+            'info': self.info,
         })
 
         self.hook.context_init(self)
-        self.dump_trial()
+        self.flush(metrics=False)
 
-    def _runfunc(self):
-
+    def _runfunc(self, func, params):
         if self.iter is None:
-            r = self.func(**self.params)
+            r = func(**params)
         else:
             r = self.iter  # resumed
 
-        if isinstance(r, Iterable):
-            self.iter = iter(r)
+        if isinstance(r, Iterator):
+            self.iter = r
             for x in self.iter:
                 if x is not None:
                     return x
         else:
             return r
 
-    def run(self):
+    def run(self, fn, /, **params):
 
-        if self.iter:
+        # FIXME
+        self.params = params
+        #self.func = fn
+
+        if self.load_snapshot():
             self.data.state = 'resumed'
             self.data.at.resumed = datetime.datetime.now()
         else:
+            self.start(params)
             self.data.state = 'running'
             self.data.at.started = datetime.datetime.now()
 
-        self.data.info = self.info
-        self.dump_trial()
+        self.flush(metrics=False)
+        self.hook.trial_started(self)
 
-        with with_tracker(self):
-            self.hook.trial_started(self)
+        try:
+            result = self._runfunc(fn, params)
+        except BaseException as e:
+            self.finish(None, exc=e)
+        else:
+            self.finish(result)
 
-            try:
-                started = datetime.datetime.now()
-                result = self._runfunc()
-                finished = datetime.datetime.now()
-            except BaseException as e:
-                finished = datetime.datetime.now()
-                self.data.state = 'fail'
-                self.data.error = repr(e)
-                with self.attach("traceback.txt") as f:
-                    traceback.print_exc(file=f)
-            else:
-                self.data.state = 'done'
-                self.data.result = result
-                if 'error' in self.data:
-                    del self.data['error']
+    def _finish_fail(self, exc):
+        self.data.state = 'fail'
+        self.data.error = repr(exc)
+        with self.attach("traceback.txt") as f:
+            traceback.print_exc(file=f)
 
-            self.hook.trial_finished(self)
-            self.metrics.flush()
+    def _finish_done(self, result):
+        self.data.state = 'done'
+        self.data.result = result
+        if 'error' in self.data:
+            del self.data['error']
 
+    def finish(self, result, exc=None):
+        if exc:
+            assert result is None
+            self._finish_fail(exc)
+        else:
+            self._finish_done(result)
+        self.hook.trial_finished(self)
         self.data.at.finished = datetime.datetime.now()
-        self.data.at.duration = (finished - started).microseconds * 0.000001
-
-        self.dump_trial()
+        self.flush()
 
     def infused_tracker(self) -> 'InfusedTracker':
         return InfusedTracker(
@@ -280,17 +252,21 @@ class Tracker(BaseTracker):
             hook=self.hook,
         )
 
-    def flush(self):
+    def flush(self, metrics=True):
         logger.debug("flush tracking contxt %s", self)
-        self.dump_trial()
-        self.metrics.flush()
+        self.hook.trial_presave(self)
+        self.data.info = self.info
+        with self.attach("votakvot.yaml", mode='wt') as f:
+            votakvot.data.dump_yaml_file(f, self.data)
+        if metrics:
+            self.metrics.flush()
 
 
-class InfusedTracker(BaseTracker):
+class InfusedTracker(_BaseTracker):
 
     def __init__(self, path, tid, hook):
         uid = uuid.uuid1().hex
-        BaseTracker.__init__(
+        _BaseTracker.__init__(
             self,
             path=path,
             uid=uid,
@@ -319,11 +295,6 @@ class InfusedTracker(BaseTracker):
     def flush(self):
         logger.info("flush infused tracker %s", self)
         self.metrics.flush()
-
-
-def _desuspect_func(f):
-    # get original function when it is wrapped by `@votakvot.track`
-    return getattr(f, '_votakvot_origin', f)
 
 
 class Trial:

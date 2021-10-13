@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import multiprocess
 import logging
+import typing
 
 import votakvot
 from . import meta, core
@@ -8,93 +11,76 @@ from . import meta, core
 logger = logging.getLogger(__name__)
 
 
-class RunnerContext(core.ATracker):
+class ARunner(typing.Protocol):
 
-    tid = None
-    uid = None
+    path: str | None
 
-    def __init__(self, runner: 'Runner'):
-        self.runner = runner
-        self.path = runner.path
+    def run(self, tid, fn, /, **kwargs) -> core.Trial:
+        ...
 
-    def meter(self, **kwargs):
-        raise RuntimeError("function `meter` can't be used from driver")
-
-    def inform(self, **kwargs):
-        raise RuntimeError("function `inform` can't be used from driver")
-
-    def attach(self, name, **kwargs):
-        raise RuntimeError("function `attach` can't be used from driver")
-
-    def call(self, tid, func, params):
-        return self.runner.call(tid, func, params)
-
-    def snapshot(self):
-        raise RuntimeError("function `snapshot` can't be used from driver")
-
-    def close(self):
-        logger.debug("Close runner context %s", self)
-        self.runner.close()
+    def close(self) -> None:
+        ...
 
 
-class Runner:
+class BaseRunner(ARunner):
 
     def __init__(self, path, metap=None, hook=None) -> None:
         self.path = path
         self.metap = metap
         self.hook = hook
 
-    def call(self, tid, func, params):
-        context = self._build_context(tid, func, params)
-        context.prerun()
-        self._make_call(context)
-        return core.Trial(context.path).result
+    def run(self, tid, fn, /, **kwargs):
+        tracker = self.create_tracker(tid, fn, kwargs)
+        self._run_tracked(tracker, fn, kwargs)
+        return core.Trial(tracker.path)
 
-    def _capture_info(self, tid):
-        return {
-            'votakvot': votakvot.__version__,
-            'meta': meta.capture_meta(self.metap) if self.metap else {},
-        }
+    def capture_meta(self):
+        return meta.capture_meta(self.metap) if self.metap else {}
 
-    def _build_context(self, tid, func, params):
-        m = meta.capture_meta(self.metap) if self.metap else {}
+    def create_tracker(self, tid, func, params):
+        meta = self.capture_meta()
         return core.Tracker(
             path=f"{self.path}/{tid}",
-            func=func,
-            params=params,
-            meta=m,
+            meta=meta,
             tid=tid,
             hook=self.hook,
         )
 
-    def _make_call(self, ac: core.Tracker):
-        ac.run()
+    def _run_tracked(self, tracker: core.Tracker, fn, params):
+        with votakvot.using_tracker(tracker):
+            tracker.run(fn, **params)
 
     def close(self):
         pass
 
 
-class InplaceRunner(Runner):
+class InplaceRunner(BaseRunner):
     pass
 
 
-class ProcessRunner(Runner):
+class ProcessRunner(BaseRunner):
 
     def __init__(self, processes=None, mp_method='fork', **kwargs) -> None:
         super().__init__(**kwargs)
         self.mp_context = multiprocess.get_context(mp_method)
         self.mp_pool = self.mp_context.Pool(processes=processes)
 
-    def _make_call(self, ac: core.Tracker):
-        callref = self.mp_pool.apply_async(ac.run)
+    def _run_tracked(self, ac: core.Tracker, fn, params):
+        callref = self.mp_pool.apply_async(self._run_in_processs, (ac, fn, params))
         callref.wait()
         callref.get()
+
+    @staticmethod
+    def _run_in_processs(ac: core.Tracker, fn, params):
+        with votakvot.using_tracker(ac, globally=True):
+            ac.run(fn, **params)
 
     def close(self):
         self.mp_pool.close()
 
 
-runners = {
+# maps runner name to runner constructor/class
+runner_classes = {
     'inplace': InplaceRunner,
     'process': ProcessRunner,
 }

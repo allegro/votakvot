@@ -1,5 +1,7 @@
 """Votakvot -- simple tool for tracking information during code testing and researching."""
 
+from __future__ import annotations
+
 import atexit
 import datetime
 import functools
@@ -7,16 +9,20 @@ import inspect
 import typing
 import uuid
 import io
+import contextvars
+import contextlib
+import logging
 
-from typing import Callable, Dict, Optional, Union
+from os import PathLike
+from typing import Any, Callable, Dict, Literal, Optional, Type, Union
 
 try:
     import dill
 except ImportError:
     dill = None
 
-from . import core, meta
-from . import runner as rr
+from . import core, meta, hook
+from . import runner as _vtvt_runner
 from .report import load_trials, load_report
 from .resumable import resumable_fn
 
@@ -36,45 +42,107 @@ __all__ = [
 ]
 
 
+logger = logging.getLogger(__name__)
 _T = typing.TypeVar('_T')
+
+_var_tracker = contextvars.ContextVar("votakvot._var_tracker")
+_global_tracker = None
+_global_runner = None
+
+
+def current_tracker() -> core.ATracker:
+    gt = _global_tracker
+    ct = _var_tracker.get(None)
+    if ct:
+        if gt:
+            logging.warning("Both global and context trackers are set, use context")
+        return ct
+    elif gt:
+        return gt
+    else:
+        return core._nope_tracker
+
+
+@contextlib.contextmanager
+def using_tracker(tracker: core.ATracker, globally: bool = False):
+    global _global_tracker
+
+    if globally and _global_tracker is not None or _var_tracker.get(None) is not None:
+        raise RuntimeError("A tracker is already configured")
+
+    try:
+        logger.debug("enter tracker %s", tracker)
+        if globally:
+            _global_tracker = tracker
+        else:
+            t = _var_tracker.set(tracker)
+        tracker.activate()
+        yield
+    finally:
+        logger.debug("exit tracker %s", tracker)
+        try:
+            tracker.flush()
+        except Exception:
+            logging.exception("Unable to flush tracker")
+        if globally:
+            _global_tracker = None
+        else:
+            _var_tracker.reset(t)
 
 
 def init(
-    path=".",
-    runner='inplace',
-    hooks=None,
-    meta_providers=None,
+    path: str | PathLike = ".",
+    hooks: hook.Hook | list[hook.Hook] | None = None,
+    runner: str | type[_vtvt_runner.ARunner] ='inplace',
+    meta_providers: dict[str, Callable[[], str]] | None = None,
     **kwargs,
-):
-    runner_cls = rr.runners[runner]
+) -> None:
+
+    global _global_runner
+    runner_cls = _vtvt_runner.runner_classes.get(runner, runner)
     metap = meta_providers or meta.providers
-    r: rr.Runner = runner_cls(metap=metap, path=path, hook=hooks, **kwargs)
-    atexit.register(r.close)
-    core.set_global_tracker(rr.RunnerContext(r))
+
+    logger.debug("Create global runner of type %s", runner_cls)
+    _global_runner = runner_cls(
+        metap=metap,
+        path=path,
+        hook=hooks,
+        **kwargs,
+    )
+
+    atexit.register(lambda: _global_runner.close())
 
 
-def meter(series="", value=None, *, format='csv', **kwargs):
+def meter(
+    series: str = "",
+    value: Any | None = None,
+    *,
+    format: Literal['csv', 'jsonl'] = 'csv',
+    **kwargs,
+) -> None:
     assert 'tid' not in kwargs and 'at' not in kwargs
     if value is not None:
         kwargs['value'] = value
-    core.current_tracker().meter(series, kwargs, format=format)
+    current_tracker().meter(series, kwargs, format=format)
 
 
-def inform(**kwargs):
+def inform(**kwargs) -> None:
     assert 'tid' not in kwargs
-    core.current_tracker().inform(**kwargs)
+    current_tracker().inform(**kwargs)
 
 
-def call(tid: str, func: Callable[..., _T], params: Dict) -> _T:
-    return core.current_tracker().call(tid, func, params)
+def run(tid: str, fn: Callable[..., _T], /, **params: Dict) -> core.Trial:
+    if _global_runner is None:
+        raise RuntimeError("Runner is not initialized, call `votakvot.init(...) first`")
+    return _global_runner.run(tid, fn, **params)
 
 
-def attach(name, mode='w', **kwargs) -> io.FileIO:
-    return core.current_tracker().attach(name, mode=mode, **kwargs)
+def attach(name: str, mode: str = 'w', **kwargs) -> io.FileIO:
+    return current_tracker().attach(name, mode=mode, **kwargs)
 
 
 def tid() -> Optional[str]:
-    return core.current_tracker().tid
+    return current_tracker().tid
 
 
 def _default_tid(**kwargs):
@@ -116,7 +184,7 @@ def track(
         def g(*args, **kwargs):
             params = dict(sig.bind(*args, **kwargs).arguments)
             tid = name_prefix + tidp(**params) + suffixc()
-            return core.current_tracker().call(tid, captured_f, params)
+            return run(tid, captured_f, **params).result
 
         if dill:
             # `dill` is able to serialize mutated global function,

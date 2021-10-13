@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 
 from functools import partial
+import typing
 
 from .data import FancyDict, merge_dicts_rec
 
@@ -78,7 +79,8 @@ def memoize(f):
     return functools.lru_cache(None)(f)
 
 
-providers = {}
+providers: typing.Dict[str, typing.Callable[[], str]] = {}
+
 providers['system.platform'] = memoize(platform.platform)
 providers['system.user'] = memoize(getpass.getuser)
 providers['system.node'] = memoize(platform.node)
