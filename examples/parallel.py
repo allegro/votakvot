@@ -1,3 +1,4 @@
+from operator import sub
 import random
 import tempfile
 import contextvars
@@ -18,29 +19,34 @@ def calc_pi(n, seed=0):
     return pi
 
 
+class ContextVarExecutor(concurrent.futures.ThreadPoolExecutor):
+    def submit(self, fn, *args, **kwargs):
+        ctx = contextvars.copy_context()
+        return super().submit(ctx.run, fn, *args, **kwargs)
+
+
 def main():
 
     store_path = tempfile.mkdtemp()
     print("write results into", store_path)
 
-    votakvot.init(path=store_path)
-
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
-    context = contextvars.copy_context()
-
-    pits = executor.map(
-        lambda params: {
-            **params,
-            'pi': context.copy().run(calc_pi, **params),
-        },
-        [
-            {'n': n, 'seed': s}
-            for n in [2 ** i for i in range(5, 20)]
-            for s in range(30)
-        ],
+    votakvot.init(
+        path=store_path,
+        runner='process',  # run functions inside separate process
     )
-    for t in pits:
-        print("pi>", t)
+
+    with ContextVarExecutor(max_workers=4) as executor:
+
+        print("sumbit tasks...")
+        tasks = []
+        for n in [2 ** i for i in range(4, 20)]:
+            for s in range(3):
+                task = executor.submit(calc_pi, n, s)
+                tasks.append(task)
+
+        print("wait tasks...")
+        for f in tasks:
+            print("pi>", f.result())
 
     print(">>", votakvot.load_report())
     print("done")

@@ -1,7 +1,10 @@
+import atexit
 import dill
 import logging
 import time
 import threading
+
+import votakvot
 
 try:
     from dataflow_worker import batchworker
@@ -30,6 +33,9 @@ class VotakvotBeamPlugin(BeamPlugin):
     """
 
 
+_global_tracker_ctx = None
+
+
 if batchworker:
     # Dataflow likes to kill worker processes with SIGKILL, which makes `atexit` useless
     # Here we are trying to hook into Dataflow bootstrap machinery
@@ -41,9 +47,12 @@ if batchworker:
     def do_work_patched(self, work_item, deferred_exception_details=None):
         logger.debug("hooked do_work %s", work_item)
         res = self.do_work_original(
-            work_item, deferred_exception_details=deferred_exception_details
+            work_item,
+            deferred_exception_details=deferred_exception_details,
         )
-        core.current_context().flush()
+        ctx = _global_tracker_ctx
+        if ctx:
+            ctx.__exit__(None, None, None)
         return res
 
     batchworker.BatchWorker.do_work_original = batchworker.BatchWorker.do_work
@@ -79,7 +88,11 @@ def _maybe_load_context(opts):
         logger.info("load infused tracker from %s", tracker_file)
         with path_fs(tracker_file).open(tracker_file, mode='rb') as f:
             tracker = dill.load(f)
-        core.set_global_tracker(tracker)
+
+        global _global_tracker_ctx
+        _global_tracker_ctx = votakvot.using_tracker(tracker, globally=True)
+        _global_tracker_ctx.__enter__()
+
     else:
         logger.info("no infused tracker is provided")
 

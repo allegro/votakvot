@@ -31,7 +31,7 @@ class BaseRunner(ARunner):
 
     def run(self, tid, fn, /, **kwargs):
         tracker = self.create_tracker(tid, fn, kwargs)
-        self._run_tracked(tracker, fn, kwargs)
+        self.run_with_tracker(tracker, fn, kwargs)
         return core.Trial(tracker.path)
 
     def capture_meta(self):
@@ -46,16 +46,18 @@ class BaseRunner(ARunner):
             hook=self.hook,
         )
 
-    def _run_tracked(self, tracker: core.Tracker, fn, params):
-        with votakvot.using_tracker(tracker):
-            tracker.run(fn, **params)
-
     def close(self):
         pass
 
+    def run_with_tracker(self, tracker: core.Tracker, fn, params: typing.Dict):
+        raise NotImplementedError
+
 
 class InplaceRunner(BaseRunner):
-    pass
+
+    def run_with_tracker(self, tracker: core.Tracker, fn, params):
+        with votakvot.using_tracker(tracker):
+            tracker.run(fn, **params)
 
 
 class ProcessRunner(BaseRunner):
@@ -65,7 +67,7 @@ class ProcessRunner(BaseRunner):
         self.mp_context = multiprocess.get_context(mp_method)
         self.mp_pool = self.mp_context.Pool(processes=processes)
 
-    def _run_tracked(self, ac: core.Tracker, fn, params):
+    def run_with_tracker(self, ac: core.Tracker, fn, params):
         callref = self.mp_pool.apply_async(self._run_in_processs, (ac, fn, params))
         callref.wait()
         callref.get()

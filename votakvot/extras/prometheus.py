@@ -103,7 +103,7 @@ class PrometheusDumper(PrometheusBaseBridgeHook):
 
     def do_export(
         self,
-        context: core.TrackingContext,
+        context: core.ATracker,
     ):
         metrics = self.registry.collect()
         d = dict(
@@ -131,7 +131,7 @@ def capture_prometheus_metrics(
     metrics: Iterable[pc.Metric] = (),
     period: float = 20,
     registry: Optional[pc.CollectorRegistry] = None,
-) -> core.TrackingHook:
+) -> hook.Hook:
     return PrometheusDumper(
         period=period,
         registry=_as_registry(metrics, registry),

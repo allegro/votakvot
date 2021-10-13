@@ -69,10 +69,11 @@ def main():
     n = 10000000
 
     for s in range(30):
-        pit = votakvot.call(
+        pit = votakvot.run(
             f"__main__.resumable_pi/n={n}/seed={s}",  # trial ID must to be explicit
             resumable_calc_pi,                        # just pass class instead of function
-            {'n': n, 'seed': s},                      # params of resumable_calc_pi.init()
+            n=n,
+            seed=s,                      # params of resumable_calc_pi.init()
         )
         print(pit.result)
 
