@@ -1,16 +1,23 @@
 import random
 import tempfile
+import math
+
 import votakvot
 
 
 @votakvot.track()
 def calc_pi(n):
     acc = 0
-    for i in range(n):
+    for _ in range(n):
         x = random.random()
         y = random.random()
         acc += x * x + y * y < 1
-    return 4 * (acc / n)
+    pi = 4 * (acc / n)
+    votakvot.inform(
+        acc=acc,
+        delta=abs(math.pi - pi),
+    )
+    return pi
 
 
 def main():

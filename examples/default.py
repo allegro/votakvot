@@ -27,7 +27,8 @@ def calc_pi(n, seed=0):
 
     # report any information
     votakvot.inform(
-        pi_diff=abs(math.pi - pi),
+        acc=acc,
+        delta=abs(math.pi - pi),
     )
 
     # attach any file to results
@@ -52,7 +53,7 @@ def main():
 
     for n in [2 ** i for i in range(4, 15)]:
         print("\nn=", n)
-        for s in range(3):
+        for s in range(5):
 
             # just call tracked function
             print(calc_pi(n, s))
