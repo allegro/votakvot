@@ -35,7 +35,7 @@ def _load_report(path, rowfn, safe):
     def yield_rows():
         for tid, v in trials.items():
             try:
-                row = {'trial': v, **rowfn(v)}
+                row = rowfn(v)
             except Exception:
                 if not safe:
                     raise
@@ -44,15 +44,20 @@ def _load_report(path, rowfn, safe):
                 yield row
 
     df = pd.DataFrame(yield_rows())
+    df.set_index('tid', inplace=True)
     return df
 
 
 def load_report(path=None, full=False, safe=True):
 
     if full:
-        rowfn = lambda v: v.data_plain
+        rowfn = lambda v: {
+            'trial': v,
+            **v.data_plain,
+        }
     else:
         rowfn = lambda v: {
+            'tid': v.tid,
             **maybe_plainify(v.params, 'params'),
             **maybe_plainify(v.info, 'info'),
             **maybe_plainify(v.result, 'result'),
