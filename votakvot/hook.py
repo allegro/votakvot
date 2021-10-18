@@ -6,19 +6,16 @@ import votakvot.core
 
 class Hook:
 
-    def trial_started(self, context: votakvot.core.Tracker):
+    def on_tracker_start(self, tracker: votakvot.core.Tracker):
         pass
 
-    def trial_presave(self, context: votakvot.core.Tracker):
+    def on_tracker_flush(self, tracker: votakvot.core.Tracker):
         pass
 
-    def trial_finished(self, context: votakvot.core.Tracker):
+    def on_tracker_finish(self, tracker: votakvot.core.Tracker):
         pass
 
-    def context_init(self, context: votakvot.core.Tracker):
-        pass
-
-    def context_infused(self, context: votakvot.core.InfusedTracker):
+    def on_tracker_infused(self, tracker: votakvot.core.InfusedTracker):
         pass
 
 

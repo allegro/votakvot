@@ -55,21 +55,21 @@ class PrometheusBaseBridgeHook(hook.Hook):
         self.registry = registry
         self.period = period
 
-    def trial_started(self, context: 'core.Context'):
+    def on_tracker_start(self, context: core.ATracker):
         logger.info("start exporting prometheus metrics for context %s", context)
         context.__dumper_done = threading.Event()
         self._sched_thread.repeat(self.period, lambda: self._dump_loop(context))
 
-    def trial_finished(self, context: 'core.Context'):
+    def on_tracker_finish(self, context: core.ATracker):
         logger.debug("stop exporting metrics for context %s", context)
         context.__dumper_done.set()
         self.do_export(context)
 
-    def context_infused(self, context: 'core.Context'):
+    def on_tracker_infused(self, context: core.ATracker):
         logger.debug("start exporting prometheus metrics for infused context %s", context)
-        self.trial_started(context)
+        self.on_tracker_start(context)
 
-    def _dump_loop(self, context: 'core.Context'):
+    def _dump_loop(self, context: core.ATracker):
         done = context.__dumper_done
         if not done.is_set():
             logger.info("export metrics for context %s", context)

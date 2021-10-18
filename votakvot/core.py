@@ -181,8 +181,7 @@ class Tracker(_BaseTracker):
             'state': 'started',
             'info': self.info,
         })
-
-        self.hook.context_init(self)
+        self.hook.on_tracker_start(self)
         self.flush(metrics=False)
 
     def _runfunc(self, func, params):
@@ -214,7 +213,6 @@ class Tracker(_BaseTracker):
             self.data.at.started = datetime.datetime.now()
 
         self.flush(metrics=False)
-        self.hook.trial_started(self)
 
         try:
             result = self._runfunc(fn, params)
@@ -241,8 +239,8 @@ class Tracker(_BaseTracker):
             self._finish_fail(exc)
         else:
             self._finish_done(result)
-        self.hook.trial_finished(self)
         self.data.at.finished = datetime.datetime.now()
+        self.hook.on_tracker_finish(self)
         self.flush()
 
     def infused_tracker(self) -> 'InfusedTracker':
@@ -254,8 +252,8 @@ class Tracker(_BaseTracker):
 
     def flush(self, metrics=True):
         logger.debug("flush tracking contxt %s", self)
-        self.hook.trial_presave(self)
         self.data.info = self.info
+        self.hook.on_tracker_flush(self)
         with self.attach("votakvot.yaml", mode='wt') as f:
             votakvot.data.dump_yaml_file(f, self.data)
         if metrics:
@@ -290,10 +288,11 @@ class InfusedTracker(_BaseTracker):
 
     def activate(self):
         logger.info("activate infused tracker for %s", self.path)
-        self.hook.context_infused(self)
+        self.hook.on_tracker_infused(self)
 
     def flush(self):
         logger.info("flush infused tracker %s", self)
+        self.hook.on_tracker_flush(self)
         self.metrics.flush()
 
 

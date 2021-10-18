@@ -46,7 +46,7 @@ class PrometheusGCMBridge(PrometheusBaseBridgeHook):
     def client(self):
         return monitoring.MetricServiceClient(credentials=self.credentials)
 
-    def _create_series(self, context: core.Context, interval, m, s):
+    def _create_series(self, tracker: core.Context, interval, m, s):
 
         series = monitoring.TimeSeries()
         name = self._metric_name(m, s)
@@ -55,7 +55,7 @@ class PrometheusGCMBridge(PrometheusBaseBridgeHook):
 
         series.metric.labels.update(s.labels)
         series.metric.labels.update(self.extra_labels)
-        series.metric.labels['votakvot__tid'] = context.tid
+        series.metric.labels['votakvot__tid'] = tracker.tid
 
         series.resource.type = 'global'
         series.resource.labels.update(self.resource_labels)
@@ -82,25 +82,25 @@ class PrometheusGCMBridge(PrometheusBaseBridgeHook):
                 sf = sf[len(prefix):]
             return f"custom.googleapis.com/votakvot/{m.name}/{sf}"
 
-    def do_export(self, context: core.Context):
+    def do_export(self, tracker: core.Context):
         now = time.time()
         if (
-            not context.__first_metrics_export
-            and now < context.__last_metrics_export + self.throttle
+            not tracker.__first_metrics_export
+            and now < tracker.__last_metrics_export + self.throttle
         ):
             return
 
         metrics = self.registry.collect()
 
         interval = monitoring.TimeInterval()
-        # interval.start_time = self._timestamp(context.__last_metrics_export)
+        # interval.start_time = self._timestamp(tracker.__last_metrics_export)
         interval.end_time = self._timestamp(now)
 
         try:
             request = {
                 "name": f"projects/{self.project_id}",
                 "time_series": [
-                    self._create_series(context, interval, m, s)
+                    self._create_series(tracker, interval, m, s)
                     for m in metrics
                     for s in m.samples
                 ],
@@ -110,29 +110,30 @@ class PrometheusGCMBridge(PrometheusBaseBridgeHook):
         except Exception:
             logger.exception("failed to do_export metrics to GCM")
 
-        context.__last_metrics_export = now
-        context.__first_metrics_export = False
+        tracker.__last_metrics_export = now
+        tracker.__first_metrics_export = False
 
-    def trial_presave(self, context: 'core.TrackingContext'):
-        super().trial_presave(context)
-        context.meta.setdefault('gcm', FancyDict())
-        context.meta.gcm.metrics = sorted(self.metric_names)
+    def on_tracker_flush(self, tracker: core.ATracker):
+        tracker.meta.setdefault('gcm', FancyDict())
+        tracker.meta.gcm.metrics = sorted(self.metric_names)
+        super().on_tracker_flush(tracker)
 
-    def context_infused(self, context: 'core.Context'):
-        context.__last_metrics_export = time.time()
-        context.__first_metrics_export = True
-        super().context_infused(context)
+    def on_tracker_infused(self, tracker: core.ATracker):
+        tracker.__last_metrics_export = time.time()
+        tracker.__first_metrics_export = True
+        super().on_tracker_infused(tracker)
 
-    def context_init(self, context: core.TrackingContext):
-        context.__last_metrics_export = time.time()
-        context.__first_metrics_export = True
-        context.meta.setdefault('gcm', FancyDict())
-        context.meta.gcm.project = self.project_id
+    def on_tracker_start(self, tracker: core.ATracker):
+        tracker.__last_metrics_export = time.time()
+        tracker.__first_metrics_export = True
+        tracker.meta.setdefault('gcm', FancyDict())
+        tracker.meta.gcm.project = self.project_id
         self.metric_names = set(
             self._metric_name(m, s)
             for m in self.registry.collect()
             for s in m.samples
         )
+        super().on_tracker_start(tracker)
 
 
 def _defult_gcp_project():
