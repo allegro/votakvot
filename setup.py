@@ -1,3 +1,4 @@
+from importlib.metadata import entry_points
 import setuptools
 
 setuptools.setup(
@@ -23,5 +24,10 @@ setuptools.setup(
         "gcm": ["google-cloud-monitoring", "gcsfs"],
         "beam": ["apache-beam", "gcsfs"],
         "prometheus": ["prometheus-client"],
+    },
+    entry_points={
+        'console_scripts': [
+            'votakvot-ab = votakvot.extras.absolutely:main',
+        ],
     },
 )

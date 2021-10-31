@@ -1,4 +1,3 @@
-import atexit
 import dill
 import logging
 import time

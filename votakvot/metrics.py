@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 import logging
 import json
@@ -15,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 class MetricsExporter:
 
-    def __init__(self, metrics_per_file=50000, filename="metrics", add_uuid=None):
+    def __init__(self, tracker: votakvot.core.Tracker, metrics_per_file=10000, filename="metrics", add_uuid=None):
+        self.tracker = tracker
         self.metricss = defaultdict(list)
         self.metrics_per_file = metrics_per_file
         self.metrics_cnt = 0
@@ -23,7 +26,7 @@ class MetricsExporter:
         self.formats = {}
         self._rslug = f"-{add_uuid}" if add_uuid else ""
 
-    def meter(self, series, kvs, format):
+    def meter(self, kvs, series, format):
         format = format or 'csv'
         assert format in {'jsonl', 'csv'}
         assert self.formats.setdefault(series, format) == format
@@ -37,7 +40,6 @@ class MetricsExporter:
         metrics.append(d)
 
     def flush_series(self, series):
-
         format = self.formats[series]
         metrics = self.metricss[series]
         if not metrics:
@@ -53,7 +55,7 @@ class MetricsExporter:
             'csv': self._write_metrics_file_csv,
             'jsonl': self._write_metrics_file_jsonl,
         }[format]
-        with votakvot.attach(mfile, mode='wt') as f:
+        with self.tracker.attach(mfile, mode='wt') as f:
             wf(f, metrics)
 
         metrics.clear()

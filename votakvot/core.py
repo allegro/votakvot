@@ -10,7 +10,7 @@ import typing
 import uuid
 
 from functools import cached_property
-from typing import Dict, Iterable, Iterator, List, Optional
+from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 import fsspec
 import pandas as pd
@@ -41,7 +41,7 @@ class ATracker(typing.Protocol):
     def inform(self, **kwargs) -> None:
         ...
 
-    def meter(self, series: str | None, metrics: Dict, format: str | None) -> None:
+    def meter(self, metrics: Dict, series: str | None = None, format: str | None = None) -> None:
         ...
 
     def flush(self) -> None:
@@ -65,7 +65,7 @@ class NopeTracker(ATracker):
     def inform(self, **kwargs):
         logger.info("info: %s", kwargs)
 
-    def meter(self, series: Optional[str], metrics: Dict, format: str):
+    def meter(self,  metrics: Dict, series=None, format=None):
         for k, v in metrics.items():
             logger.debug("metric[%s] %s = %s", series, k, v)
 
@@ -99,8 +99,8 @@ class _BaseTracker(ATracker):
         else:
             return path_fs(fn).open(fn, mode=mode, autocommit=autocommit, **kwargs)
 
-    def meter(self, series: Optional[str], metrics: Dict, format=None):
-        self.metrics.meter(series, metrics, format)
+    def meter(self, metrics, series=None, format=None):
+        self.metrics.meter(metrics, series or "", format)
 
     def activate(self):
         pass
@@ -115,7 +115,7 @@ class Tracker(_BaseTracker):
             tid=tid,
             uid=uuid.uuid1().hex,
             hook=hook,
-            metrics=votakvot.metrics.MetricsExporter(),
+            metrics=votakvot.metrics.MetricsExporter(self),
         )
         self.info = {}
         self.data = FancyDict()
@@ -270,7 +270,7 @@ class InfusedTracker(_BaseTracker):
             uid=uid,
             tid=tid,
             hook=hook,
-            metrics=votakvot.metrics.MetricsExporter(add_uuid=uid),
+            metrics=votakvot.metrics.MetricsExporter(self, add_uuid=uid),
         )
         self.info = FancyDict()
         self.info_path = f"votakvot-{uid}.yaml"

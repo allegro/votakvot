@@ -20,9 +20,11 @@ class NoMetadataException(Exception):
     pass
 
 
-def capture_meta(providers) -> FancyDict:
+def capture_meta(ps=None) -> FancyDict:
+    if ps is None:
+        ps = providers
     metas = {}
-    for key, provider in providers.items():
+    for key, provider in ps.items():
 
         logger.info("capture metadata %r", key)
         try:

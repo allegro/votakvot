@@ -114,7 +114,7 @@ def init(
 
 
 def meter(
-    series: str = "",
+    series: str = None,
     value: Any | None = None,
     *,
     format: Literal['csv', 'jsonl'] = 'csv',
@@ -123,7 +123,7 @@ def meter(
     assert 'tid' not in kwargs and 'at' not in kwargs
     if value is not None:
         kwargs['value'] = value
-    current_tracker().meter(series, kwargs, format=format)
+    current_tracker().meter(kwargs, series or "", format)
 
 
 def inform(**kwargs) -> None:
