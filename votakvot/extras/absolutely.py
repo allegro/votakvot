@@ -14,12 +14,14 @@ import contextlib
 import collections
 import datetime
 import argparse
+import importlib
 import time
 import math
-import pydoc
 import collections
 import functools
 import logging
+import sys
+import os
 
 import votakvot
 import votakvot.core
@@ -31,8 +33,25 @@ from votakvot.data import FancyDict
 logger = logging.getLogger(__file__)
 
 
-def _resolve_name(import_name):
-    return pydoc.locate(import_name)
+def _resolve_obj_rec(name: str):
+    try:
+        return importlib.import_module(name)
+    except ImportError:
+        if "." not in name:  # no chance
+            raise
+    ns_name, obj_name = name.rsplit(".", 1)
+    mod = _resolve_obj_rec(ns_name)
+    return getattr(mod, obj_name)
+
+
+def resolve_obj(name: str):
+    orig_sys_path = list(sys.path)
+    try:
+        sys.path.append(os.getcwd())
+        return _resolve_obj_rec(name)
+    finally:
+        sys.path.clear()
+        sys.path.extend(orig_sys_path)
 
 
 def _calc_percentiles(data, pcts):
@@ -261,7 +280,7 @@ def main(args=None):
     group.add_argument("-n", "--number", help="Number of requests", type=int)
     group.add_argument("-d", "--duration", help="Duration in seconds", type=int)
 
-    parser.add_argument("callback", type=_resolve_name, help="Python callable name")
+    parser.add_argument("callback", type=resolve_obj, help="Python callable name")
     parser.add_argument("param", metavar="KEY=VALUE", nargs="*", help="Function named argument")
 
     opts = parser.parse_args(args)
