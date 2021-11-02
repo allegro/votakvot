@@ -296,6 +296,13 @@ class InfusedTracker(_BaseTracker):
         self.metrics.flush()
 
 
+class TrialFailedException(Exception):
+    def __init__(self, error, traceback_txt):
+        Exception.__init__(self, error)
+        self.error = error
+        self.traceback_txt = traceback_txt
+
+
 class Trial:
 
     def __init__(
@@ -355,10 +362,12 @@ class Trial:
     def result(self):
         if 'error' in self.data:
             try:
-                logger.error("Error: %s", self.attach('traceback.txt', mode='tr').read())
+                trackeback_txt = self.attach('traceback.txt', mode='tr').read()
             except Exception:
-                pass
-            raise RuntimeError(f"Trial was failed with error: {self.data.error}")
+                trackeback_txt = None
+            else:
+                logger.debug("%s", trackeback_txt)
+            raise TrialFailedException(self.data.error, trackeback_txt)
         return self.data.get('result')
 
     def load_metrics(self) -> pd.DataFrame:

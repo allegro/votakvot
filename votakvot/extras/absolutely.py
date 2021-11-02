@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 `votakvot-ABsolutely` is a script you can use to quickly smoke-test your application.
 It run user-provided python function from many greenlets and collect time statistics.
@@ -13,14 +15,11 @@ import collections
 import datetime
 import argparse
 import time
-import types
 import math
 import pydoc
 import collections
 import functools
-import itertools
 import logging
-import random
 
 import votakvot
 import votakvot.core
@@ -149,10 +148,6 @@ def _do_onecall(collector: StatsCollector, callback):
         collector.add_result(result, duration, error)
 
 
-class _StrictCheckFailedError(Exception):
-    pass
-
-
 class _GeventEnv:
     """incapsulates all interaction with 'gevent'"""
 
@@ -225,7 +220,7 @@ def run(
 
         def checkerr():
             if strict and collector.errors_all:
-                raise _StrictCheckFailedError(collector.errors_all[-1])
+                raise collector.errors_all[-1]
 
         with progressbar if progressbar is not None else contextlib.nullcontext():
             if number is None:
@@ -317,7 +312,13 @@ def main(args=None):
         max_errors=opts.max_errors,
         concurrency_env=_GeventEnv(opts.concurrency),
     )
-    collector = trial.result
+
+    try:
+        collector = trial.result
+    except votakvot.core.TrialFailedException as e:
+        print("absolutely fail!")
+        print(e.traceback_txt.strip())
+        exit(2)
 
     print("done")
     print("")
