@@ -199,10 +199,8 @@ class Tracker(_BaseTracker):
             return r
 
     def run(self, fn, /, **params):
-
-        # FIXME
+        fn = getattr(fn, '_votakvot__wrapped_fn', fn)
         self.params = params
-        #self.func = fn
 
         if self.load_snapshot():
             self.data.state = 'resumed'

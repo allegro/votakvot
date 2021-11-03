@@ -188,15 +188,14 @@ def track(
 
         if dill:
             # `dill` is able to serialize mutated global function,
-            # but fails to serialize recursive closure (so `g` captures itself)
+            # but fails to serialize recursive closure (when `g` captures itself)
             captured_f = f
         else:
             # `pickle` verify that global function remains the same
             # so `g` needs to capture link to itself
             captured_f = g
 
-        g._votakvot_origin = f
-
+        g._votakvot__wrapped_fn = f
         return g
 
     return wrapper
