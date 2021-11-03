@@ -10,13 +10,13 @@ The idea
 
 You write Python code, annotate a function, call it.
 
-*Votakvot* takes care about tracking what function parameters are, its result, git repo status, etc...
+*Votakvot* track what function parameters are, its result, git repo status, etc...
 
 Change your code, change parameters, try to rerun the function, experiment.
 
-Then *votakvot* may load back all information to pandas `DataFrame`.
+Then *votakvot* may load back all information as pandas `DataFrame`.
 
-Play with it and find the best combination of function parameters and version of a source code.
+Play with data and find the best combination of function parameters and version of a source code.
 
 
 Basic usage
@@ -50,7 +50,7 @@ inside *./my-results*. That new subfolder contains a file
 - git info (branch, commit, work directory tree-ish)
 - system information (machine, user, python version)
 - traceback text on exception
-- additional ad-hoc information
+- any additional ad-hoc information
 
 Additional information added with `votakvot.inform`:
 
@@ -157,14 +157,12 @@ votakvot.meter(
 )
 ```
 
-Metrics are stored as series of csv files and can be loaded to single
-\`pandas.DataFrame\`:
+Metrics are stored as series of csv files and can be loaded to single `pandas.DataFrame`:
 
 ```python
 rep = votakvot.load_report()
-trial = rep.loc[0]['trial'].path          # path on fs with *.csv files
-
-votakvot.metrics.load_csv_metrics(trial)  # instance of pd.DataFrame
+tid = rep.loc[0]['tid']             # trial id
+votakvot.metrics.load_metrics(tid)  # instance of pd.DataFrame
 ```
 
 Attached files
@@ -238,13 +236,42 @@ class my_function(votakvot.resumable_fn):
             return None      # repeat `self.loop()` one more time
 
 # autoresume when there is a snapshot for this id on the filesystem
-votakvot.call(
+votakvot.run(
     f"resumable_pi/n={n}/seed={s}",   # id must be explicitly specified for resumable tasks
     my_function,
-    {'one': 1, 'two': 2},
+    one=1,
+    two=2,
 )
 ```
 
+votakvot-ab
+-----------
+
+Votakvot comes with basic benchmarking utility `votakvot-ab`.
+It behaves similar to known [ab](http://www.skrenta.com/rt/man/ab.8.html) utility,
+but instead of making HTTP calls invokes user provided python callback.
+
+Utility patch socker library with [gevent](http://www.gevent.org/), this allows to
+run IO-bounded code with bigger concurrency.
+
+Given file `my_module.py`
+```python
+import requests
+import requests.adapters
+
+session = requests.Session()
+session.mount('http://', requests.adapters.HTTPAdapter(pool_maxsize=100))
+
+def get_example(domain="org"):
+   return session.get(f"http://example.{domain}/").status_code
+```
+
+call function 1000 times in 10 "threads" (using greenlets):
+```bash
+votakvot-ab -n1000 -c10 my_module.get_example domain=com
+```
+
+See `votakvot-ab --help` for all parameters.
 
 ## License
 

@@ -76,7 +76,7 @@ class MetricsExporter:
             self.flush_series(s)
 
 
-def load_metrics(trial: Union['votakvot.core.Trial', str, Path]) -> pd.DataFrame:
+def load_metrics(trial: votakvot.core.Trial | str | Path) -> pd.DataFrame:
 
     if isinstance(trial, Path):
         trial = str(trial)
