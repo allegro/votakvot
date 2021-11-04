@@ -247,14 +247,14 @@ votakvot.run(
 votakvot-ab
 -----------
 
-Votakvot comes with basic benchmarking utility `votakvot-ab`.
+Votakvot comes with basic benchmarking tool `votakvot-ab`.
 It behaves similar to the well known [ab](http://www.skrenta.com/rt/man/ab.8.html) utility,
-but instead of making HTTP calls invokes a user provided python callback.
+but instead of making HTTP calls invokes a python callback.
 
-Utility patch sockets with [gevent](http://www.gevent.org/), allowing to
+Tool may patch sockets with [gevent](http://www.gevent.org/), allowing to
 run IO-bounded code with bigger concurrency.
 
-Given file `my_module.py`
+Given file `my_module.py`:
 ```python
 import requests
 
@@ -262,18 +262,18 @@ def get_example():
    return requests.get("http://example.com/").status_code
 ```
 
-Then call the function 500 times in 100 "threads" (using greenlets):
+Then call the function 1000 times in 200 "threads" (using greenlets):
 ```bash
-votakvot-ab --gevent -n500 -1200 my_module.get_example
+votakvot-ab --gevent -n1000 -c200 my_module.get_example
 ```
 
-Also callback might be a class with custom initialization logic (usefull to crate
-connection pools, HTTP sessions etc):
+Also callback might be a class with custom initialization logic (usefull to create
+HTTP sessions and connection pools, perform precomputations, etc):
 
 ```python
 import requests
 
-class HttpGet:
+class HTTPGet:
     def __init__(self, url):
         self.url = url
         self.session = requests.Session()  # reuse connections
@@ -282,10 +282,10 @@ class HttpGet:
         return self.session.get(self.url).status_code
 ```
 
-Objech `HttpGet` created just once and then method `__call__` invoked 500 multiple times:
+Instance of `HTTPGet` created once and then method `__call__` invoked 1000 times:
 
 ```bash
-votakvot-ab -g -n500 -c100 my_module.HttpGet url=http://example.com
+votakvot-ab -g -n1000 -c200 my_module.HTTPGet url=http://example.com
 ```
 
 See `votakvot-ab --help` for all parameters.
