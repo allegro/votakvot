@@ -27,31 +27,23 @@ class resumable_calc_pi(votakvot.resumable_fn):
     def init(self, n, seed):
         self.r = random.Random(seed)
         self.n = n
-        self.i = 0
         self.acc = 0
 
     def loop(self):
-
-        self.i += 1
-        print_progress(self.i, self.n)
-
         # single iteration - state may be pickled
         # in-between invocations of this method
-
+        print_progress(self.i, self.n)
         x, y = self.r.random(), self.r.random()
         self.acc += x ** 2 + y ** 2 < 1
 
-        if self.i < self.n:
-            # return None to repeat the loop
-            return
+    def is_done(self) -> bool:
+        return self.index >= self.n
 
+    def result(self):
         pi = 4 * (self.acc / self.n)
         votakvot.inform(
             pi_diff=abs(math.pi - pi),
         )
-
-        # return any non-None value to break the loop
-        return pi
 
 
 def test():

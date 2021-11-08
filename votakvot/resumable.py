@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import abc
 import datetime
 import time
 
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import votakvot
 
@@ -13,12 +15,11 @@ class resumable_fn(abc.ABC):
     snapshot_period: Union[datetime.timedelta, float, None] = None
 
     def __init__(self, *args, **kwargs):
+        self.index = 0
         self._args = args
         self._kwargs = kwargs
         self._state = 0
         self._result = None
-
-        self._cnt = 0
         self._lsat = time.time()
 
     def __iter__(self):
@@ -30,13 +31,19 @@ class resumable_fn(abc.ABC):
 
     def _need_snapshot(self):
         return (
-            (self.snapshot_each and not self._cnt % self.snapshot_each)
+            (self.snapshot_each and not self.index % self.snapshot_each)
             or (self.snapshot_period and time.time() > self.snapshot_period + self._lsat)
         )
 
     @classmethod
     def call(cls, *args, **kwargs):
         return next(filter(None, cls(*args, **kwargs)))
+
+    def __getstate__(self):
+        return self.load_state()
+
+    def __setstate__(self, state):
+        self.load_state(state)
 
     def __next__(self):
 
@@ -47,15 +54,16 @@ class resumable_fn(abc.ABC):
             self.snapshot()
 
         elif self._state == 1:  # loop
-            self._cnt += 1
-            self._result = self.loop()
-            if self._result is None:
-                if self._need_snapshot():
-                    self.snapshot()
-            else:
+            self.index += 1
+            if self.is_done():
+                self._result = self.result()
                 self._state = 3
-                self.clean()
+                self.cleanup()
                 self.snapshot()
+            else:
+                self.loop()
+                if not self.is_done() and self._need_snapshot():
+                    self.snapshot()
 
         elif self._state == 3:  # return
             self._state = 4
@@ -73,8 +81,21 @@ class resumable_fn(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def loop(self) -> Optional[Any]:
+    def loop(self) -> None:
         raise NotImplementedError
 
-    def clean(self) -> None:
+    @abc.abstractmethod
+    def is_done(self) -> bool:
+        raise NotImplementedError
+
+    def result(self) -> Any:
+        return None
+
+    def cleanup(self) -> None:
         pass
+
+    def load_state(self, state: Dict):
+        self.__dict__.update(state)
+
+    def save_state(self) -> Dict:
+        return self.__dict__
