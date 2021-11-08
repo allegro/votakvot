@@ -60,7 +60,7 @@ def current_tracker() -> core.ATracker:
     elif gt:
         return gt
     else:
-        return core._nope_tracker
+        return core.NopeTracker()
 
 
 @contextlib.contextmanager
@@ -99,7 +99,12 @@ def init(
 ) -> None:
 
     global _global_runner
-    runner_cls = _vtvt_runner.runner_classes.get(runner, runner)
+
+    if isinstance(runner, type):
+        runner_cls = runner
+    else:
+        runner_cls = _vtvt_runner.ARunner.find(runner)
+
     metap = meta_providers or meta.providers
 
     logger.debug("Create global runner of type %s", runner_cls)

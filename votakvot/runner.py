@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class ARunner(typing.Protocol):
 
+    name: str
     path: str | None
 
     def run(self, tid, fn, /, **kwargs) -> core.Trial:
@@ -21,8 +22,38 @@ class ARunner(typing.Protocol):
     def close(self) -> None:
         ...
 
+    @classmethod
+    def __all_subclasses(cls):
+        for c in cls.__subclasses__():
+            yield c
+            yield from c.__all_subclasses()
+
+    @staticmethod
+    def find(name: str):
+
+        all_names = []
+        candidate = []
+
+        for c in ARunner.__all_subclasses():
+            aname = getattr(c, 'runner_name', None)
+            if name == aname:
+                candidate.append(c)
+            if aname:
+                all_names.append(aname)
+
+        logger.info("Found %d runners: %s", len(all_names), ", ".join(all_names))
+
+        if len(candidate) == 0:
+            raise ValueError(f"Not found runner with name {name!r}")
+        if len(candidate) == 1:
+            return candidate[0]
+        else:
+            raise ValueError(f"Found multipler runners for name {name!r}", candidate)
+
 
 class BaseRunner(ARunner):
+
+    name = None
 
     def __init__(self, path, metap=None, hook=None) -> None:
         self.path = path
@@ -55,12 +86,16 @@ class BaseRunner(ARunner):
 
 class InplaceRunner(BaseRunner):
 
+    runner_name = 'inplace'
+
     def run_with_tracker(self, tracker: core.Tracker, fn, params):
         with votakvot.using_tracker(tracker):
             tracker.run(fn, **params)
 
 
 class ProcessRunner(BaseRunner):
+
+    runner_name = 'process'
 
     def __init__(self, processes=None, mp_method='fork', **kwargs) -> None:
         super().__init__(**kwargs)
@@ -79,10 +114,3 @@ class ProcessRunner(BaseRunner):
 
     def close(self):
         self.mp_pool.close()
-
-
-# maps runner name to runner constructor/class
-runner_classes = {
-    'inplace': InplaceRunner,
-    'process': ProcessRunner,
-}

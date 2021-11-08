@@ -75,8 +75,12 @@ class NopeTracker(ATracker):
     def activate(self):
         pass
 
+    def snapshot(self):
+        pass
 
-_nope_tracker = NopeTracker()
+
+def _dewrap_votakvot_fn(fn):
+    return getattr(fn, '_votakvot__wrapped_fn', fn)
 
 
 class _BaseTracker(ATracker):
@@ -117,6 +121,10 @@ class Tracker(_BaseTracker):
             hook=hook,
             metrics=votakvot.metrics.MetricsExporter(self),
         )
+        self._binded = False
+        self.func = None
+        self.params = None
+
         self.info = {}
         self.data = FancyDict()
         self.meta = meta
@@ -156,6 +164,8 @@ class Tracker(_BaseTracker):
 
         if self.params != other.params:
             raise RuntimeError("snapshot has mismatched params", self.params, other.params)
+        #if self.func != other.func:
+        #    raise RuntimeError("snapshot has mismatched function", self.func, other.func)
 
         other = dict(other.__dict__)
         other.pop('path', None)
@@ -184,9 +194,9 @@ class Tracker(_BaseTracker):
         self.hook.on_tracker_start(self)
         self.flush(metrics=False)
 
-    def _runfunc(self, func, params):
+    def _runfunc(self):
         if self.iter is None:
-            r = func(**params)
+            r = self.func(**self.params)
         else:
             r = self.iter  # resumed
 
@@ -198,9 +208,19 @@ class Tracker(_BaseTracker):
         else:
             return r
 
-    def run(self, fn, /, **params):
-        fn = getattr(fn, '_votakvot__wrapped_fn', fn)
+    def bind(self, fn, /, **params):
+        assert not self._binded, f"Tracker is already binded to {self.func}"
+        self._binded = True
+        logger.debug("Bind tracker %r to fn %r with params %r", self, fn, params)
+        self.func = _dewrap_votakvot_fn(fn)
         self.params = params
+
+    def run(self, fn=None, /, **params):
+
+        if fn is not None:
+            self.bind(fn, **params)
+        else:
+            assert not params, "No kwargs allowed when tracker is already binded"
 
         if self.load_snapshot():
             self.data.state = 'resumed'
@@ -213,7 +233,7 @@ class Tracker(_BaseTracker):
         self.flush(metrics=False)
 
         try:
-            result = self._runfunc(fn, params)
+            result = self._runfunc()
         except BaseException as e:
             self.finish(None, exc=e)
         else:
