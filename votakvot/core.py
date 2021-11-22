@@ -134,7 +134,7 @@ class Tracker(_BaseTracker):
 
     def inform(self, **kwargs):
         for k in self.info.keys() & kwargs.keys():
-            if self.keys[k] != kwargs[k]:
+            if self.info[k] != kwargs[k]:
                 logger.warning("overwrite informed field %r: %r -> %r", k, self.info[k], kwargs[k])
         self.info.update(kwargs)
 
@@ -196,7 +196,7 @@ class Tracker(_BaseTracker):
 
     def _runfunc(self):
         if self.iter is None:
-            r = self.func(**self.params)
+            r = _dewrap_votakvot_fn(self.func)(**self.params)
         else:
             r = self.iter  # resumed
 
@@ -212,7 +212,7 @@ class Tracker(_BaseTracker):
         assert not self._binded, f"Tracker is already binded to {self.func}"
         self._binded = True
         logger.debug("Bind tracker %r to fn %r with params %r", self, fn, params)
-        self.func = _dewrap_votakvot_fn(fn)
+        self.func = fn
         self.params = params
 
     def run(self, fn=None, /, **params):

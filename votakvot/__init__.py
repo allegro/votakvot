@@ -183,11 +183,15 @@ def track(
         else:
             suffixc = lambda: ""
 
+        argspec = inspect.getfullargspec(f)
         sig = inspect.signature(f)
 
         @functools.wraps(f)
         def g(*args, **kwargs):
             params = dict(sig.bind(*args, **kwargs).arguments)
+            if argspec.varkw:
+                params.update(params.pop(argspec.varkw, {}))
+
             tid = name_prefix + tidp(**params) + suffixc()
             return run(tid, captured_f, **params).result
 
