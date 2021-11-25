@@ -23,7 +23,7 @@ def load_trials(path=None, safe=True):
         except Exception:
             if not safe:
                 raise
-            logger.exception("uanble to load %s", f)
+            logger.exception("unable to load %s", f)
 
     return trials
 
@@ -44,6 +44,10 @@ def _load_report(path, rowfn, safe):
                 yield row
 
     df = pd.DataFrame(yield_rows())
+
+    if df.empty:
+        return None
+
     df.set_index('tid', inplace=True)
     return df
 
