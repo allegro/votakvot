@@ -32,7 +32,7 @@ class resumable_calc_pi(votakvot.resumable_fn):
     def loop(self):
         # single iteration - state may be pickled
         # in-between invocations of this method
-        print_progress(self.i, self.n)
+        print_progress(self.index, self.n)
         x, y = self.r.random(), self.r.random()
         self.acc += x ** 2 + y ** 2 < 1
 

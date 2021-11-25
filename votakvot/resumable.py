@@ -40,7 +40,7 @@ class resumable_fn(abc.ABC):
         return next(filter(None, cls(*args, **kwargs)))
 
     def __getstate__(self):
-        return self.load_state()
+        return self.save_state()
 
     def __setstate__(self, state):
         self.load_state(state)
