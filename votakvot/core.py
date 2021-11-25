@@ -315,10 +315,17 @@ class InfusedTracker(_BaseTracker):
 
 
 class TrialFailedException(Exception):
+
     def __init__(self, error, traceback_txt):
         Exception.__init__(self, error)
         self.error = error
         self.traceback_txt = traceback_txt
+
+    def __str__(self):
+        s = super().__str__()
+        if not self.traceback_txt:
+            return s
+        return f"{s}\n   caused by\n{self.traceback_txt}"
 
 
 class Trial:
