@@ -3,11 +3,13 @@ import io
 import logging
 import urllib.parse
 
-from typing import Any, Dict, Mapping
+from functools import wraps
+from typing import Any, Dict, Mapping, NamedTuple
 
 import fsspec
 import wrapt
 import yaml
+import yaml.constructor
 
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,11 @@ class FancyDict(dict):
         return f"<yaml{y[5:]}>"
 
 
+class BadPythonYAML(NamedTuple):
+    tag: str
+    value: Any
+
+
 class YAMLDumper(yaml.Dumper):
 
     def __init__(self, *args, **kwargs):
@@ -68,8 +75,11 @@ class YAMLDumper(yaml.Dumper):
         if len(self.indents) == 1:
             super().write_line_break()
 
+    def represent_bad_python_ref(self, data):
+        return self.represent_scalar(data.tag, data.value)
 
-class YAMLLoader(yaml.Loader):
+
+class YAMLLoader(yaml.FullLoader):
 
     def construct_yaml_map(self, node):
         data = FancyDict()
@@ -77,9 +87,55 @@ class YAMLLoader(yaml.Loader):
         value = self.construct_mapping(node)
         data.update(value)
 
+    def _catch_bad_python_yaml(f):
 
-YAMLLoader.add_constructor("tag:yaml.org,2002:map", YAMLLoader.construct_yaml_map)
-YAMLDumper.add_representer(FancyDict, YAMLDumper.represent_dict)
+        @wraps(f)
+        def method(self, suffix, node):
+            try:
+                return f(self, suffix, node)
+            except yaml.constructor.ConstructorError:
+                return BadPythonYAML(node.tag, node.value)
+
+        return method
+
+    construct_python_name = _catch_bad_python_yaml(yaml.FullLoader.construct_python_name)
+    construct_python_module = _catch_bad_python_yaml(yaml.FullLoader.construct_python_module)
+    construct_python_object = _catch_bad_python_yaml(yaml.FullLoader.construct_python_object)
+    construct_python_object_apply = _catch_bad_python_yaml(yaml.FullLoader.construct_python_object_apply)
+    construct_python_object_new = _catch_bad_python_yaml(yaml.FullLoader.construct_python_object_new)
+
+
+YAMLDumper.add_representer(
+    FancyDict,
+    YAMLDumper.represent_dict)
+
+YAMLDumper.add_representer(
+    BadPythonYAML,
+    YAMLDumper.represent_bad_python_ref)
+
+YAMLLoader.add_constructor(
+    "tag:yaml.org,2002:map",
+    YAMLLoader.construct_yaml_map)
+
+YAMLLoader.add_multi_constructor(
+    'tag:yaml.org,2002:python/module:',
+    YAMLLoader.construct_python_module)
+
+YAMLLoader.add_multi_constructor(
+    'tag:yaml.org,2002:python/object:',
+    YAMLLoader.construct_python_object)
+
+YAMLLoader.add_multi_constructor(
+    'tag:yaml.org,2002:python/object/new:',
+    YAMLLoader.construct_python_object_new)
+
+YAMLLoader.add_multi_constructor(
+    'tag:yaml.org,2002:python/object/apply:',
+    YAMLLoader.construct_python_object_apply)
+
+YAMLLoader.add_multi_constructor(
+    'tag:yaml.org,2002:python/name:',
+    YAMLLoader.construct_python_name)
 
 
 def load_yaml_file(file: io.IOBase) -> Any:
