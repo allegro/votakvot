@@ -11,6 +11,29 @@ from . import meta, core
 logger = logging.getLogger(__name__)
 
 
+def find_runner(name: str) -> typing.Type[ARunner]:
+
+    all_names = []
+    candidate = []
+
+    for c in ARunner._all_subclasses():
+        aname = getattr(c, 'runner_name', None)
+        if name == aname:
+            candidate.append(c)
+        if aname:
+            all_names.append(aname)
+
+    logger.info("Found %d runners: %s", len(all_names), ", ".join(all_names))
+
+    if len(candidate) == 0:
+        raise ValueError(f"Not found runner with name {name!r}")
+    if len(candidate) == 1:
+        return candidate[0]
+    else:
+        raise ValueError(f"Found multipler runners for name {name!r}", candidate)
+
+
+
 class ARunner(typing.Protocol):
 
     name: str
@@ -23,32 +46,10 @@ class ARunner(typing.Protocol):
         ...
 
     @classmethod
-    def __all_subclasses(cls):
+    def _all_subclasses(cls):
         for c in cls.__subclasses__():
             yield c
-            yield from c.__all_subclasses()
-
-    @staticmethod
-    def find(name: str):
-
-        all_names = []
-        candidate = []
-
-        for c in ARunner.__all_subclasses():
-            aname = getattr(c, 'runner_name', None)
-            if name == aname:
-                candidate.append(c)
-            if aname:
-                all_names.append(aname)
-
-        logger.info("Found %d runners: %s", len(all_names), ", ".join(all_names))
-
-        if len(candidate) == 0:
-            raise ValueError(f"Not found runner with name {name!r}")
-        if len(candidate) == 1:
-            return candidate[0]
-        else:
-            raise ValueError(f"Found multipler runners for name {name!r}", candidate)
+            yield from c._all_subclasses()
 
 
 class BaseRunner(ARunner):

@@ -93,7 +93,7 @@ def using_tracker(tracker: core.ATracker, globally: bool = False):
 def init(
     path: str | PathLike = ".",
     hooks: hook.Hook | list[hook.Hook] | None = None,
-    runner: str | type[_vtvt_runner.ARunner] ='inplace',
+    runner: str | type[_vtvt_runner.ARunner] = 'inplace',
     meta_providers: dict[str, Callable[[], str]] | None = None,
     **kwargs,
 ) -> None:
@@ -103,7 +103,7 @@ def init(
     if isinstance(runner, type):
         runner_cls = runner
     else:
-        runner_cls = _vtvt_runner.ARunner.find(runner)
+        runner_cls = _vtvt_runner.find_runner(runner)
 
     metap = meta_providers or meta.providers
 
