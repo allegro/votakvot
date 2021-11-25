@@ -27,7 +27,7 @@ from .report import load_trials, load_report
 from .resumable import resumable_fn
 
 
-__version__ = "0.1.dev1"
+__version__ = "0.1.dev2"
 __author__ = "anjensan"
 
 __all__ = [
