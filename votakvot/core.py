@@ -398,12 +398,6 @@ class Trial:
     def load_metrics(self) -> pd.DataFrame:
         return votakvot.metrics.load_metrics(self)
 
-    @cached_property
-    def data_plain(self):
-        r = votakvot.data.plainify_dict(self.data)
-        r.pop('votakvot', None)
-        return r
-
     def __repr__(self):
         return f"<Trial {self.uid!r}>"
 
