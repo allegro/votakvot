@@ -122,7 +122,7 @@ class StatsCollector:
             self.errors_count += 1
             self.errors_all.append(error)
 
-    def calculate_statistics(self):
+    def calc_stats(self):
         self._finished = self._finished or time.time()
         average = sum(self.times_all) / len(self.times_all) if self.times_all else None
         return FancyDict(
@@ -288,8 +288,12 @@ def run(
                 concurrency_env.shutdown(True)
 
         checkerr()
-        print("calc stats...")
-        return collector.calculate_statistics()
+        stats = collector.calc_stats()
+        if isinstance(callback, type):
+            if hasattr(real_callback, '__close__'):
+                real_callback.__close__()
+
+        return stats
 
     with votakvot.using_tracker(tracker, globally=True):
         tracker.run(dorun, **(params or {}))
@@ -297,7 +301,6 @@ def run(
 
 
 def main(args=None):
-
 
     parser = argparse.ArgumentParser(description="votakvot cli runner")
     parser.add_argument("-c", "--concurrency", help="Concurrency", type=int, default=1)
